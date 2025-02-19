@@ -18,12 +18,14 @@ pub enum OntologyError {
     Unknown,
 }
 
-// Implement a simple ontology
-pub struct SimpleOntology;
+// Implement a simple ontology that allows users to define their own ontology
+pub struct UserDefinedOntology {
+    ontology_definition: String,
+}
 
-impl Ontology for SimpleOntology {
+impl Ontology for UserDefinedOntology {
     fn classify(&self, input: TransformedData) -> Result<Classification, OntologyError> {
-        // Implement classifying transformed data
+        // Implement classifying transformed data using the user-defined ontology
         unimplemented!()
     }
 }
