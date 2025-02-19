@@ -19,7 +19,5 @@ Cargo.lock
 /target
 
 #added by me
-/scaffolds
-roadmap.md
-tests.js
 .DS_Store
+.aider*
