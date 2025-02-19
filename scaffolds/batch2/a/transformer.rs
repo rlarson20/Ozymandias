@@ -5,6 +5,8 @@ pub trait Transformer {
     fn transform(&self, input: ParsedData) -> Result<TransformedData, TransformError>;
 }
 
+mod organizational;
+
 // Define a transformed data type
 pub struct TransformedData {
     // Add fields as needed

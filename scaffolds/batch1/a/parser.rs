@@ -5,6 +5,8 @@ pub trait Parser {
     fn parse(&self, input: &str) -> Result<ParsedData, ParseError>;
 }
 
+mod organizational;
+
 // Define a parsed data type
 pub struct ParsedData {
     // Add fields as needed

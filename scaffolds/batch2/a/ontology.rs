@@ -5,6 +5,8 @@ pub trait Ontology {
     fn classify(&self, input: TransformedData) -> Result<Classification, OntologyError>;
 }
 
+mod inputs_outputs;
+
 // Define a classification type
 pub enum Classification {
     // Add classification variants as needed
