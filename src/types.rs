@@ -9,5 +9,3 @@ mod communication;
 mod environment;
 mod connectors;
 mod inputs_outputs;
-
-mod organizational;

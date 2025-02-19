@@ -7,6 +7,8 @@ pub trait Parser {
 
 mod organizational;
 
+mod organizational;
+
 // Define a parsed data type
 pub struct ParsedData {
     // Add fields as needed
