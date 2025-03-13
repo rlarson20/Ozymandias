@@ -1,0 +1,208 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Macro Best Practices
+
+This rule enforces best practices for writing macros in Rust.
+
+## Rules
+
+1. Use `#[macro_export]` for public macros:
+   ```rust
+   // ❌ Bad
+   macro_rules! my_macro {
+       ($($arg:tt)*) => { ... }
+   }
+   
+   // ✅ Good
+   #[macro_export]
+   macro_rules! my_macro {
+       ($($arg:tt)*) => { ... }
+   }
+   ```
+
+2. Use descriptive macro names:
+   ```rust
+   // ❌ Bad
+   macro_rules! m { ... }
+   
+   // ✅ Good
+   macro_rules! create_error_type { ... }
+   ```
+
+3. Use hygienic identifiers:
+   ```rust
+   // ❌ Bad
+   macro_rules! bad_macro {
+       ($name:ident) => {
+           let $name = 42;
+       }
+   }
+   
+   // ✅ Good
+   macro_rules! good_macro {
+       ($name:ident) => {
+           let mut $name = 42;
+       }
+   }
+   ```
+
+4. Use `$crate` for crate-relative paths:
+   ```rust
+   // ❌ Bad
+   macro_rules! my_macro {
+       ($type:ty) => {
+           Vec<$type>
+       }
+   }
+   
+   // ✅ Good
+   macro_rules! my_macro {
+       ($type:ty) => {
+           $crate::Vec<$type>
+       }
+   }
+   ```
+
+5. Use `$($arg:tt)*` for flexible arguments:
+   ```rust
+   // ❌ Bad
+   macro_rules! fixed_args {
+       ($a:expr, $b:expr) => { ... }
+   }
+   
+   // ✅ Good
+   macro_rules! flexible_args {
+       ($($arg:tt)*) => { ... }
+   }
+   ```
+
+6. Use `#[doc]` for macro documentation:
+   ```rust
+   // ❌ Bad
+   macro_rules! undocumented_macro { ... }
+   
+   // ✅ Good
+   /// Creates a new error type with the given name and variants.
+   /// 
+   /// # Examples
+   /// 
+   /// ```
+   /// create_error_type!(MyError {
+   ///     IoError(std::io::Error),
+   ///     ParseError(String),
+   /// });
+   /// ```
+   #[macro_export]
+   macro_rules! create_error_type { ... }
+   ```
+
+## Rationale
+
+- `#[macro_export]` makes macros available to users
+- Descriptive names improve code readability
+- Hygienic identifiers prevent naming conflicts
+- `$crate` ensures correct path resolution
+- Flexible arguments make macros more reusable
+- Documentation helps users understand macros
+
+## Examples
+
+### Good Example
+```rust
+/// Creates a new error type with the given name and variants.
+/// 
+/// # Examples
+/// 
+/// ```
+/// create_error_type!(MyError {
+///     IoError(std::io::Error),
+///     ParseError(String),
+/// });
+/// ```
+#[macro_export]
+macro_rules! create_error_type {
+    ($name:ident { $($variant:ident($type:ty)),* $(,)? }) => {
+        #[derive(Debug)]
+        pub enum $name {
+            $($variant($type)),*
+        }
+        
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$variant(e) => write!(f, "{}: {}", stringify!($variant), e)),*
+                }
+            }
+        }
+        
+        impl std::error::Error for $name {}
+        
+        $(
+            impl From<$type> for $name {
+                fn from(err: $type) -> Self {
+                    Self::$variant(err)
+                }
+            }
+        )*
+    };
+}
+
+/// Creates a new builder struct with the given fields.
+/// 
+/// # Examples
+/// 
+/// ```
+/// create_builder!(UserBuilder {
+///     name: String,
+///     age: u32,
+/// });
+/// ```
+#[macro_export]
+macro_rules! create_builder {
+    ($name:ident { $($field:ident: $type:ty),* $(,)? }) => {
+        pub struct $name {
+            $($field: Option<$type>),*
+        }
+        
+        impl $name {
+            pub fn new() -> Self {
+                Self {
+                    $($field: None),*
+                }
+            }
+            
+            $(
+                pub fn $field(mut self, value: $type) -> Self {
+                    self.$field = Some(value);
+                    self
+                }
+            )*
+            
+            pub fn build(self) -> Result<User, String> {
+                Ok(User {
+                    $($field: self.$field.ok_or_else(|| format!("Missing field: {}", stringify!($field)))?),*
+                })
+            }
+        }
+    };
+}
+```
+
+### Bad Example
+```rust
+macro_rules! m {
+    ($t:ty) => {
+        struct S {
+            f: $t,
+        }
+    }
+}
+
+macro_rules! bad_macro {
+    ($name:ident) => {
+        let $name = 42;
+    }
+} 

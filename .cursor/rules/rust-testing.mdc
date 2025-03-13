@@ -1,0 +1,362 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Testing Best Practices
+
+
+
+This rule enforces best practices for testing Rust code.
+
+## Rules
+
+1. Use unit tests:
+   ```rust
+   // ❌ Bad
+   fn process(data: &[u8]) {
+       // No tests
+   }
+   
+   // ✅ Good
+   #[cfg(test)]
+   mod tests {
+       use super::*;
+       
+       #[test]
+       fn test_process() {
+           let data = vec![1, 2, 3];
+           process(&data);
+       }
+   }
+   ```
+
+2. Use integration tests:
+   ```rust
+   // ❌ Bad
+   // No integration tests
+   
+   // ✅ Good
+   // tests/integration_test.rs
+   use my_crate;
+   
+   #[test]
+   fn test_integration() {
+       let result = my_crate::process_data();
+       assert!(result.is_ok());
+   }
+   ```
+
+3. Use property-based testing:
+   ```rust
+   // ❌ Bad
+   #[test]
+   fn test_reverse() {
+       let input = vec![1, 2, 3];
+       let result = reverse(&input);
+       assert_eq!(result, vec![3, 2, 1]);
+   }
+   
+   // ✅ Good
+   use proptest::prelude::*;
+   
+   proptest! {
+       #[test]
+       fn test_reverse_properties(input in prop::collection::vec(any::<u32>(), 0..100)) {
+           let result = reverse(&input);
+           assert_eq!(reverse(&result), input);
+           assert_eq!(result.len(), input.len());
+       }
+   }
+   ```
+
+4. Use fuzzing:
+   ```rust
+   // ❌ Bad
+   // No fuzzing tests
+   
+   // ✅ Good
+   use libfuzzer_sys::fuzz_target;
+   
+   fuzz_target!(|data: &[u8]| {
+       if let Ok(input) = std::str::from_utf8(data) {
+           process_input(input);
+       }
+   });
+   ```
+
+5. Use test fixtures:
+   ```rust
+   // ❌ Bad
+   #[test]
+   fn test_process() {
+       let data = vec![1, 2, 3];
+       process(&data);
+   }
+   
+   // ✅ Good
+   struct TestFixture {
+       data: Vec<u8>,
+   }
+   
+   impl TestFixture {
+       fn new() -> Self {
+           Self {
+               data: vec![1, 2, 3],
+           }
+       }
+   }
+   
+   #[test]
+   fn test_process() {
+       let fixture = TestFixture::new();
+       process(&fixture.data);
+   }
+   ```
+
+6. Use mocking:
+   ```rust
+   // ❌ Bad
+   fn test_external_service() {
+       let service = ExternalService::new();
+       service.process();
+   }
+   
+   // ✅ Good
+   use mockall::predicate::*;
+   
+   #[mockall::automock]
+   trait ExternalService {
+       fn process(&self) -> Result<(), Error>;
+   }
+   
+   #[test]
+   fn test_external_service() {
+       let mut mock = MockExternalService::new();
+       mock.expect_process()
+           .returning(|| Ok(()));
+       mock.process().unwrap();
+   }
+   ```
+
+## Rationale
+
+- Unit tests verify individual components
+- Integration tests verify component interaction
+- Property-based tests verify invariants
+- Fuzzing finds edge cases and crashes
+- Test fixtures reduce code duplication
+- Mocking enables isolated testing
+
+## Examples
+
+### Good Example
+```rust
+use std::collections::HashMap;
+use proptest::prelude::*;
+use mockall::predicate::*;
+use libfuzzer_sys::fuzz_target;
+
+#[derive(Debug, Clone)]
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+impl User {
+    fn new(id: u32, name: String, email: String) -> Self {
+        Self { id, name, email }
+    }
+    
+    fn validate_email(&self) -> bool {
+        self.email.contains('@')
+    }
+}
+
+#[mockall::automock]
+trait UserRepository {
+    fn get_user(&self, id: u32) -> Result<User, Error>;
+    fn save_user(&self, user: &User) -> Result<(), Error>;
+}
+
+struct UserService {
+    repo: Box<dyn UserRepository>,
+}
+
+impl UserService {
+    fn new(repo: Box<dyn UserRepository>) -> Self {
+        Self { repo }
+    }
+    
+    fn create_user(&self, name: String, email: String) -> Result<User, Error> {
+        let id = self.generate_id()?;
+        let user = User::new(id, name, email);
+        
+        if !user.validate_email() {
+            return Err(Error::InvalidEmail);
+        }
+        
+        self.repo.save_user(&user)?;
+        Ok(user)
+    }
+    
+    fn get_user(&self, id: u32) -> Result<User, Error> {
+        self.repo.get_user(id)
+    }
+    
+    fn generate_id(&self) -> Result<u32, Error> {
+        Ok(rand::random())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate::*;
+    
+    struct TestFixture {
+        service: UserService,
+        mock_repo: MockUserRepository,
+    }
+    
+    impl TestFixture {
+        fn new() -> Self {
+            let mock_repo = MockUserRepository::new();
+            let service = UserService::new(Box::new(mock_repo.clone()));
+            Self { service, mock_repo }
+        }
+    }
+    
+    #[test]
+    fn test_create_user() {
+        let fixture = TestFixture::new();
+        let name = "John".to_string();
+        let email = "john@example.com".to_string();
+        
+        fixture.mock_repo
+            .expect_save_user()
+            .returning(|_| Ok(()));
+        
+        let result = fixture.service.create_user(name, email);
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_get_user() {
+        let fixture = TestFixture::new();
+        let user = User::new(1, "John".to_string(), "john@example.com".to_string());
+        
+        fixture.mock_repo
+            .expect_get_user()
+            .with(predicate::eq(1))
+            .returning(move |_| Ok(user.clone()));
+        
+        let result = fixture.service.get_user(1);
+        assert_eq!(result.unwrap().id, 1);
+    }
+}
+
+// Property-based tests
+proptest! {
+    #[test]
+    fn test_user_validation(
+        name in "[a-zA-Z]+",
+        email in "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    ) {
+        let fixture = TestFixture::new();
+        let result = fixture.service.create_user(name, email);
+        assert!(result.is_ok());
+    }
+}
+
+// Fuzzing test
+fuzz_target!(|data: &[u8]| {
+    if let Ok(input) = std::str::from_utf8(data) {
+        let fixture = TestFixture::new();
+        let _ = fixture.service.create_user(input.to_string(), input.to_string());
+    }
+});
+
+#[derive(Debug)]
+enum Error {
+    InvalidEmail,
+    DatabaseError(String),
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    
+    #[test]
+    fn test_user_flow() {
+        let repo = RealUserRepository::new();
+        let service = UserService::new(Box::new(repo));
+        
+        let user = service
+            .create_user("John".to_string(), "john@example.com".to_string())
+            .unwrap();
+        
+        let retrieved = service.get_user(user.id).unwrap();
+        assert_eq!(user.id, retrieved.id);
+    }
+}
+```
+
+### Bad Example
+```rust
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+impl User {
+    fn new(id: u32, name: String, email: String) -> Self {
+        Self { id, name, email }
+    }
+}
+
+struct UserService {
+    users: HashMap<u32, User>,
+}
+
+impl UserService {
+    fn new() -> Self {
+        Self {
+            users: HashMap::new(),
+        }
+    }
+    
+    fn create_user(&mut self, name: String, email: String) -> User {
+        let id = rand::random();
+        let user = User::new(id, name, email);
+        self.users.insert(id, user.clone());
+        user
+    }
+    
+    fn get_user(&self, id: u32) -> Option<&User> {
+        self.users.get(&id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_create_user() {
+        let mut service = UserService::new();
+        let user = service.create_user("John".to_string(), "john@example.com".to_string());
+        assert_eq!(user.name, "John");
+    }
+    
+    #[test]
+    fn test_get_user() {
+        let mut service = UserService::new();
+        let user = service.create_user("John".to_string(), "john@example.com".to_string());
+        let retrieved = service.get_user(user.id).unwrap();
+        assert_eq!(user.id, retrieved.id);
+    }
+}
+``` 

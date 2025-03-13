@@ -1,0 +1,204 @@
+# Rust Type System Best Practices
+
+This rule enforces best practices for using Rust's type system effectively.
+
+## Rules
+
+1. Use newtype pattern for type safety:
+   ```rust
+   // ❌ Bad
+   type UserId = String;
+   
+   // ✅ Good
+   #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+   pub struct UserId(String);
+   
+   impl UserId {
+       pub fn new(id: String) -> Self {
+           Self(id)
+       }
+       
+       pub fn as_str(&self) -> &str {
+           &self.0
+       }
+   }
+   ```
+
+2. Use generics for reusable code:
+   ```rust
+   // ❌ Bad
+   fn process_string(s: String) -> String {
+       s.to_uppercase()
+   }
+   
+   // ✅ Good
+   fn process<T: AsRef<str>>(s: T) -> String {
+       s.as_ref().to_uppercase()
+   }
+   ```
+
+3. Use associated types for trait implementations:
+   ```rust
+   // ❌ Bad
+   trait Container {
+       fn get(&self) -> Box<dyn Any>;
+   }
+   
+   // ✅ Good
+   trait Container {
+       type Item;
+       fn get(&self) -> &Self::Item;
+   }
+   ```
+
+4. Use type aliases for complex types:
+   ```rust
+   // ❌ Bad
+   fn process(data: Result<HashMap<String, Vec<Option<u32>>>, Error>) -> Result<(), Error> {
+       // Implementation
+   }
+   
+   // ✅ Good
+   type DataMap = HashMap<String, Vec<Option<u32>>>;
+   type Result<T> = std::result::Result<T, Error>;
+   
+   fn process(data: Result<DataMap, Error>) -> Result<()> {
+       // Implementation
+   }
+   ```
+
+5. Use const generics for compile-time values:
+   ```rust
+   // ❌ Bad
+   struct FixedArray {
+       data: Vec<u32>,
+   }
+   
+   // ✅ Good
+   struct FixedArray<const N: usize> {
+       data: [u32; N],
+   }
+   ```
+
+6. Use sealed traits for API control:
+   ```rust
+   // ❌ Bad
+   pub trait Error {}
+   
+   // ✅ Good
+   mod sealed {
+       pub trait Sealed {}
+   }
+   
+   pub trait Error: sealed::Sealed {}
+   ```
+
+## Rationale
+
+- Newtype pattern prevents type confusion
+- Generics enable code reuse
+- Associated types provide better type relationships
+- Type aliases improve readability
+- Const generics enable compile-time optimizations
+- Sealed traits control API implementation
+
+## Examples
+
+### Good Example
+```rust
+use std::collections::HashMap;
+use std::fmt;
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct UserId(String);
+
+impl UserId {
+    pub fn new(id: String) -> Self {
+        Self(id)
+    }
+    
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct Email(String);
+
+impl Email {
+    pub fn new(email: String) -> Result<Self, EmailError> {
+        if !is_valid_email(&email) {
+            return Err(EmailError::InvalidFormat);
+        }
+        Ok(Self(email))
+    }
+}
+
+#[derive(Debug)]
+pub enum EmailError {
+    InvalidFormat,
+}
+
+type UserMap = HashMap<UserId, User>;
+
+pub struct User {
+    id: UserId,
+    email: Email,
+    name: String,
+}
+
+impl User {
+    pub fn new(id: UserId, email: Email, name: String) -> Self {
+        Self { id, email, name }
+    }
+}
+
+pub trait Container {
+    type Item;
+    fn get(&self) -> &Self::Item;
+}
+
+impl Container for User {
+    type Item = UserId;
+    fn get(&self) -> &Self::Item {
+        &self.id
+    }
+}
+
+pub struct FixedArray<const N: usize> {
+    data: [u32; N],
+}
+
+impl<const N: usize> FixedArray<N> {
+    pub fn new() -> Self {
+        Self {
+            data: [0; N],
+        }
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+pub trait Error: sealed::Sealed + fmt::Debug + fmt::Display {}
+
+impl sealed::Sealed for EmailError {}
+impl Error for EmailError {}
+```
+
+### Bad Example
+```rust
+type UserId = String;
+type Email = String;
+
+struct User {
+    id: UserId,
+    email: Email,
+    name: String,
+}
+
+fn process(data: Result<HashMap<String, Vec<Option<u32>>>, Box<dyn std::error::Error>>) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation
+    Ok(())
+} 

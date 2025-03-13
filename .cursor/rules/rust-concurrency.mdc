@@ -1,0 +1,297 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+
+# Rust Concurrency Best Practices
+
+This rule enforces best practices for concurrent programming in Rust.
+
+## Rules
+
+1. Use `Arc` for shared ownership:
+   ```rust
+   // ❌ Bad
+   struct SharedData {
+       data: Vec<u8>,
+   }
+   
+   // ✅ Good
+   use std::sync::Arc;
+   
+   struct SharedData {
+       data: Arc<Vec<u8>>,
+   }
+   ```
+
+2. Use `Mutex` for shared mutable state:
+   ```rust
+   // ❌ Bad
+   struct Counter {
+       value: u32,
+   }
+   
+   // ✅ Good
+   use std::sync::Mutex;
+   
+   struct Counter {
+       value: Mutex<u32>,
+   }
+   ```
+
+3. Use `RwLock` for read-heavy workloads:
+   ```rust
+   // ❌ Bad
+   struct Cache {
+       data: Mutex<HashMap<String, String>>,
+   }
+   
+   // ✅ Good
+   use std::sync::RwLock;
+   
+   struct Cache {
+       data: RwLock<HashMap<String, String>>,
+   }
+   ```
+
+4. Prevent deadlocks:
+   ```rust
+   // ❌ Bad
+   fn process(a: &Mutex<Data>, b: &Mutex<Data>) {
+       let _guard1 = a.lock().unwrap();
+       let _guard2 = b.lock().unwrap();
+   }
+   
+   // ✅ Good
+   fn process(a: &Mutex<Data>, b: &Mutex<Data>) {
+       let (first, second) = if a as *const _ < b as *const _ {
+           (a, b)
+       } else {
+           (b, a)
+       };
+       let _guard1 = first.lock().unwrap();
+       let _guard2 = second.lock().unwrap();
+   }
+   ```
+
+5. Use lock-free algorithms:
+   ```rust
+   // ❌ Bad
+   struct Counter {
+       value: Mutex<u32>,
+   }
+   
+   // ✅ Good
+   use std::sync::atomic::{AtomicU32, Ordering};
+   
+   struct Counter {
+       value: AtomicU32,
+   }
+   ```
+
+6. Use channels for message passing:
+   ```rust
+   // ❌ Bad
+   struct Worker {
+       data: Arc<Mutex<Vec<u8>>>,
+   }
+   
+   // ✅ Good
+   use tokio::sync::mpsc;
+   
+   struct Worker {
+       sender: mpsc::Sender<Message>,
+       receiver: mpsc::Receiver<Message>,
+   }
+   ```
+
+## Rationale
+
+- `Arc` enables safe shared ownership across threads
+- `Mutex` provides safe mutable access to shared data
+- `RwLock` optimizes for read-heavy workloads
+- Deadlock prevention ensures reliable concurrent execution
+- Lock-free algorithms improve performance
+- Channels enable safe message passing between threads
+
+## Examples
+
+### Good Example
+```rust
+use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::collections::HashMap;
+use tokio::sync::mpsc;
+use std::thread;
+
+#[derive(Debug)]
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+struct UserService {
+    users: Arc<RwLock<HashMap<u32, User>>>,
+    next_id: AtomicU32,
+    sender: mpsc::Sender<Message>,
+    receiver: mpsc::Receiver<Message>,
+}
+
+#[derive(Debug)]
+enum Message {
+    CreateUser { name: String, email: String },
+    GetUser { id: u32 },
+    DeleteUser { id: u32 },
+}
+
+impl UserService {
+    fn new() -> Self {
+        let (sender, receiver) = mpsc::channel(100);
+        Self {
+            users: Arc::new(RwLock::new(HashMap::new())),
+            next_id: AtomicU32::new(1),
+            sender,
+            receiver,
+        }
+    }
+    
+    fn create_user(&self, name: String, email: String) -> Result<User, Error> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let user = User { id, name, email };
+        
+        let mut users = self.users.write().map_err(|_| Error::LockError)?;
+        users.insert(id, user.clone());
+        Ok(user)
+    }
+    
+    fn get_user(&self, id: u32) -> Result<User, Error> {
+        let users = self.users.read().map_err(|_| Error::LockError)?;
+        users.get(&id)
+            .cloned()
+            .ok_or(Error::UserNotFound)
+    }
+    
+    fn delete_user(&self, id: u32) -> Result<(), Error> {
+        let mut users = self.users.write().map_err(|_| Error::LockError)?;
+        users.remove(&id).ok_or(Error::UserNotFound)?;
+        Ok(())
+    }
+    
+    async fn process_messages(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            match message {
+                Message::CreateUser { name, email } => {
+                    if let Err(e) = self.create_user(name, email) {
+                        eprintln!("Error creating user: {:?}", e);
+                    }
+                }
+                Message::GetUser { id } => {
+                    match self.get_user(id) {
+                        Ok(user) => println!("Found user: {:?}", user),
+                        Err(e) => eprintln!("Error getting user: {:?}", e),
+                    }
+                }
+                Message::DeleteUser { id } => {
+                    if let Err(e) = self.delete_user(id) {
+                        eprintln!("Error deleting user: {:?}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Error {
+    LockError,
+    UserNotFound,
+}
+
+fn main() {
+    let service = Arc::new(UserService::new());
+    let mut handles = vec![];
+    
+    // Spawn worker threads
+    for _ in 0..4 {
+        let service = Arc::clone(&service);
+        let handle = thread::spawn(move || {
+            let mut runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(service.process_messages());
+        });
+        handles.push(handle);
+    }
+    
+    // Send some test messages
+    let sender = service.sender.clone();
+    thread::spawn(move || {
+        sender.send(Message::CreateUser {
+            name: "John".to_string(),
+            email: "john@example.com".to_string(),
+        }).unwrap();
+        
+        sender.send(Message::GetUser { id: 1 }).unwrap();
+        
+        sender.send(Message::DeleteUser { id: 1 }).unwrap();
+    });
+    
+    // Wait for all threads to complete
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+```
+
+### Bad Example
+```rust
+use std::sync::Mutex;
+use std::collections::HashMap;
+use std::thread;
+
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+struct UserService {
+    users: Mutex<HashMap<u32, User>>,
+    next_id: u32,
+}
+
+impl UserService {
+    fn new() -> Self {
+        Self {
+            users: Mutex::new(HashMap::new()),
+            next_id: 1,
+        }
+    }
+    
+    fn create_user(&mut self, name: String, email: String) -> User {
+        let id = self.next_id;
+        self.next_id += 1;
+        let user = User { id, name, email };
+        self.users.lock().unwrap().insert(id, user.clone());
+        user
+    }
+    
+    fn get_user(&self, id: u32) -> Option<User> {
+        self.users.lock().unwrap().get(&id).cloned()
+    }
+    
+    fn delete_user(&mut self, id: u32) -> bool {
+        self.users.lock().unwrap().remove(&id).is_some()
+    }
+}
+
+fn main() {
+    let mut service = UserService::new();
+    
+    // This won't compile because UserService is not thread-safe
+    let handle = thread::spawn(move || {
+        service.create_user("John".to_string(), "john@example.com".to_string());
+    });
+    
+    handle.join().unwrap();
+}

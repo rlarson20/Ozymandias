@@ -1,0 +1,175 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Trait Implementation Best Practices
+
+This rule enforces best practices for implementing traits in Rust.
+
+## Rules
+
+1. Implement `Default` trait when possible:
+   ```rust
+   // ❌ Bad
+   struct Config {
+       timeout: u32,
+   }
+   
+   // ✅ Good
+   #[derive(Default)]
+   struct Config {
+       #[default = "30"]
+       timeout: u32,
+   }
+   ```
+
+2. Use `#[derive(Debug)]` for debugging:
+   ```rust
+   // ❌ Bad
+   struct Error {
+       message: String,
+   }
+   
+   // ✅ Good
+   #[derive(Debug)]
+   struct Error {
+       message: String,
+   }
+   ```
+
+3. Implement `Clone` and `Copy` appropriately:
+   ```rust
+   // ✅ Good
+   #[derive(Clone, Copy)]
+   struct Point {
+       x: f32,
+       y: f32,
+   }
+   ```
+
+4. Use `Into` trait for conversions:
+   ```rust
+   // ❌ Bad
+   fn process_string(s: String) { }
+   
+   // ✅ Good
+   fn process_string<S: Into<String>>(s: S) {
+       let s: String = s.into();
+   }
+   ```
+
+5. Implement `From` for error types:
+   ```rust
+   // ✅ Good
+   #[derive(Debug)]
+   enum MyError {
+       Io(std::io::Error),
+       Parse(String),
+   }
+   
+   impl From<std::io::Error> for MyError {
+       fn from(err: std::io::Error) -> Self {
+           Self::Io(err)
+       }
+   }
+   ```
+
+6. Use `AsRef` for string-like types:
+   ```rust
+   // ❌ Bad
+   fn process_path(path: &str) { }
+   
+   // ✅ Good
+   fn process_path<P: AsRef<Path>>(path: P) {
+       let path: &Path = path.as_ref();
+   }
+   ```
+
+## Rationale
+
+- `Default` provides sensible defaults
+- `Debug` enables debugging output
+- `Clone` and `Copy` enable value duplication
+- `Into` enables flexible type conversions
+- `From` enables error type conversions
+- `AsRef` enables generic string-like types
+
+## Examples
+
+### Good Example
+```rust
+use std::path::Path;
+use std::convert::{From, Into};
+
+#[derive(Debug, Clone, Copy, Default)]
+struct Point {
+    #[default = "0.0"]
+    x: f32,
+    #[default = "0.0"]
+    y: f32,
+}
+
+#[derive(Debug)]
+enum GeometryError {
+    InvalidPoint(Point),
+    ParseError(String),
+}
+
+impl From<String> for GeometryError {
+    fn from(s: String) -> Self {
+        Self::ParseError(s)
+    }
+}
+
+struct Geometry {
+    points: Vec<Point>,
+}
+
+impl Geometry {
+    fn new() -> Self {
+        Self {
+            points: Vec::new(),
+        }
+    }
+    
+    fn add_point<P: Into<Point>>(&mut self, point: P) {
+        self.points.push(point.into());
+    }
+    
+    fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), GeometryError> {
+        let path = path.as_ref();
+        // Implementation
+        Ok(())
+    }
+}
+```
+
+### Bad Example
+```rust
+struct Point {
+    x: f32,
+    y: f32,
+}
+
+struct Geometry {
+    points: Vec<Point>,
+}
+
+impl Geometry {
+    fn new() -> Self {
+        Self {
+            points: Vec::new(),
+        }
+    }
+    
+    fn add_point(&mut self, x: f32, y: f32) {
+        self.points.push(Point { x, y });
+    }
+    
+    fn save_to_file(&self, path: &str) -> Result<(), String> {
+        // Implementation
+        Ok(())
+    }
+}
+``` 

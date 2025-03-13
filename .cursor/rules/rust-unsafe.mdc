@@ -1,0 +1,274 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Unsafe Code Guidelines
+
+This rule enforces best practices for writing and using unsafe code in Rust.
+
+## Rules
+
+1. Minimize unsafe code scope:
+   ```rust
+   // ❌ Bad
+   unsafe fn process_data(data: &mut [u8]) {
+       // Lots of unsafe code
+   }
+   
+   // ✅ Good
+   fn process_data(data: &mut [u8]) {
+       unsafe {
+           // Minimal unsafe block
+           ptr::write(data.as_mut_ptr(), 0);
+       }
+   }
+   ```
+
+2. Document unsafe invariants:
+   ```rust
+   // ❌ Bad
+   unsafe fn deref_ptr(ptr: *const u8) -> u8 {
+       *ptr
+   }
+   
+   // ✅ Good
+   /// # Safety
+   /// - `ptr` must be non-null
+   /// - `ptr` must be properly aligned
+   /// - `ptr` must point to valid memory
+   /// - The referenced memory must not be modified while this reference exists
+   unsafe fn deref_ptr(ptr: *const u8) -> u8 {
+       *ptr
+   }
+   ```
+
+3. Use safe abstractions:
+   ```rust
+   // ❌ Bad
+   pub struct RawVec<T> {
+       ptr: *mut T,
+       cap: usize,
+   }
+   
+   // ✅ Good
+   pub struct Vec<T> {
+       buf: RawVec<T>,
+       len: usize,
+   }
+   
+   impl<T> Vec<T> {
+       pub fn push(&mut self, value: T) {
+           // Safe public API
+           unsafe {
+               // Minimal unsafe implementation
+           }
+       }
+   }
+   ```
+
+4. Validate unsafe assumptions:
+   ```rust
+   // ❌ Bad
+   unsafe fn process_unchecked(data: &[u8]) {
+       // No validation
+   }
+   
+   // ✅ Good
+   unsafe fn process_unchecked(data: &[u8]) {
+       assert!(!data.is_empty(), "data must not be empty");
+       assert!(data.len() >= 4, "data must be at least 4 bytes");
+       // Process data
+   }
+   ```
+
+5. Use atomic operations:
+   ```rust
+   // ❌ Bad
+   unsafe {
+       *ptr = value;
+   }
+   
+   // ✅ Good
+   unsafe {
+       std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+       std::ptr::write_volatile(ptr, value);
+       std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+   }
+   ```
+
+6. Handle undefined behavior:
+   ```rust
+   // ❌ Bad
+   unsafe fn read_uninit<T>() -> T {
+       std::mem::uninitialized()
+   }
+   
+   // ✅ Good
+   unsafe fn read_uninit<T>() -> T {
+       let mut value = std::mem::MaybeUninit::uninit();
+       std::ptr::write(value.as_mut_ptr(), std::mem::zeroed());
+       value.assume_init()
+   }
+   ```
+
+## Rationale
+
+- Minimizing unsafe code reduces risk
+- Documentation helps maintain invariants
+- Safe abstractions provide ergonomic APIs
+- Validation prevents undefined behavior
+- Atomic operations ensure thread safety
+- Proper handling of uninitialized memory prevents UB
+
+## Examples
+
+### Good Example
+```rust
+use std::ptr;
+use std::mem;
+use std::sync::atomic;
+
+/// A safe wrapper around a raw pointer
+pub struct SafePtr<T> {
+    ptr: *mut T,
+}
+
+impl<T> SafePtr<T> {
+    /// Creates a new SafePtr
+    /// 
+    /// # Safety
+    /// - `ptr` must be non-null
+    /// - `ptr` must be properly aligned
+    /// - `ptr` must point to valid memory
+    pub unsafe fn new(ptr: *mut T) -> Self {
+        assert!(!ptr.is_null(), "pointer must not be null");
+        Self { ptr }
+    }
+    
+    /// Gets a reference to the value
+    /// 
+    /// # Safety
+    /// - The referenced memory must not be modified while this reference exists
+    pub unsafe fn get(&self) -> &T {
+        &*self.ptr
+    }
+    
+    /// Sets the value atomically
+    pub fn set(&self, value: T) {
+        unsafe {
+            atomic::fence(atomic::Ordering::SeqCst);
+            ptr::write_volatile(self.ptr, value);
+            atomic::fence(atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+/// A safe vector implementation
+pub struct SafeVec<T> {
+    data: Vec<T>,
+}
+
+impl<T> SafeVec<T> {
+    pub fn new() -> Self {
+        Self {
+            data: Vec::new(),
+        }
+    }
+    
+    pub fn push(&mut self, value: T) {
+        self.data.push(value);
+    }
+    
+    /// Gets a reference to an element
+    /// 
+    /// # Safety
+    /// - `index` must be in bounds
+    pub unsafe fn get_unchecked(&self, index: usize) -> &T {
+        self.data.get_unchecked(index)
+    }
+    
+    /// Sets an element without bounds checking
+    /// 
+    /// # Safety
+    /// - `index` must be in bounds
+    pub unsafe fn set_unchecked(&mut self, index: usize, value: T) {
+        *self.data.get_unchecked_mut(index) = value;
+    }
+}
+
+/// A safe memory allocator
+pub struct Allocator {
+    memory: Vec<u8>,
+}
+
+impl Allocator {
+    pub fn new(size: usize) -> Self {
+        Self {
+            memory: vec![0; size],
+        }
+    }
+    
+    /// Allocates memory
+    /// 
+    /// # Safety
+    /// - `size` must be non-zero
+    /// - `align` must be a power of 2
+    pub unsafe fn allocate(&mut self, size: usize, align: usize) -> *mut u8 {
+        assert!(size > 0, "size must be non-zero");
+        assert!(align.is_power_of_two(), "align must be a power of 2");
+        
+        // Implementation
+        self.memory.as_mut_ptr()
+    }
+    
+    /// Frees memory
+    /// 
+    /// # Safety
+    /// - `ptr` must have been allocated by this allocator
+    /// - `ptr` must not have been freed
+    pub unsafe fn deallocate(&mut self, ptr: *mut u8) {
+        assert!(!ptr.is_null(), "pointer must not be null");
+        // Implementation
+    }
+}
+```
+
+### Bad Example
+```rust
+pub struct UnsafeVec<T> {
+    ptr: *mut T,
+    len: usize,
+    cap: usize,
+}
+
+impl<T> UnsafeVec<T> {
+    pub fn new() -> Self {
+        Self {
+            ptr: std::ptr::null_mut(),
+            len: 0,
+            cap: 0,
+        }
+    }
+    
+    pub fn push(&mut self, value: T) {
+        unsafe {
+            if self.len == self.cap {
+                self.grow();
+            }
+            std::ptr::write(self.ptr.add(self.len), value);
+            self.len += 1;
+        }
+    }
+    
+    unsafe fn grow(&mut self) {
+        // No validation or safety checks
+        let new_cap = if self.cap == 0 { 1 } else { self.cap * 2 };
+        let new_ptr = std::alloc::alloc(std::alloc::Layout::array::<T>(new_cap).unwrap());
+        std::ptr::copy(self.ptr, new_ptr, self.len);
+        std::alloc::dealloc(self.ptr, std::alloc::Layout::array::<T>(self.cap).unwrap());
+        self.ptr = new_ptr;
+        self.cap = new_cap;
+    }
+}
+``` 

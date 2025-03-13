@@ -1,0 +1,332 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust API Design Best Practices
+
+This rule enforces best practices for designing Rust APIs.
+
+## Rules
+
+1. Use builder pattern for complex construction:
+   ```rust
+   // ❌ Bad
+   struct Config {
+       host: String,
+       port: u16,
+       timeout: Duration,
+   }
+   
+   // ✅ Good
+   #[derive(Default)]
+   struct ConfigBuilder {
+       host: Option<String>,
+       port: Option<u16>,
+       timeout: Option<Duration>,
+   }
+   
+   impl ConfigBuilder {
+       pub fn host(mut self, host: impl Into<String>) -> Self {
+           self.host = Some(host.into());
+           self
+       }
+       
+       pub fn port(mut self, port: u16) -> Self {
+           self.port = Some(port);
+           self
+       }
+       
+       pub fn timeout(mut self, timeout: Duration) -> Self {
+           self.timeout = Some(timeout);
+           self
+       }
+       
+       pub fn build(self) -> Result<Config, ConfigError> {
+           Ok(Config {
+               host: self.host.unwrap_or_default(),
+               port: self.port.unwrap_or(8080),
+               timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
+           })
+       }
+   }
+   ```
+
+2. Use error types for failure cases:
+   ```rust
+   // ❌ Bad
+   fn process(data: &[u8]) -> Result<(), String> {
+       if data.is_empty() {
+           return Err("Data is empty".to_string());
+       }
+       Ok(())
+   }
+   
+   // ✅ Good
+   #[derive(Debug, thiserror::Error)]
+   enum ProcessError {
+       #[error("Data is empty")]
+       EmptyData,
+       #[error("Invalid format: {0}")]
+       InvalidFormat(String),
+   }
+   
+   fn process(data: &[u8]) -> Result<(), ProcessError> {
+       if data.is_empty() {
+           return Err(ProcessError::EmptyData);
+       }
+       Ok(())
+   }
+   ```
+
+3. Use generics for flexibility:
+   ```rust
+   // ❌ Bad
+   fn process_string(s: String) -> String {
+       s.to_uppercase()
+   }
+   
+   // ✅ Good
+   fn process<T: AsRef<str>>(s: T) -> String {
+       s.as_ref().to_uppercase()
+   }
+   ```
+
+4. Use async traits appropriately:
+   ```rust
+   // ❌ Bad
+   trait Storage {
+       fn get(&self, key: &str) -> Result<Vec<u8>, Error>;
+   }
+   
+   // ✅ Good
+   #[async_trait::async_trait]
+   trait Storage {
+       async fn get(&self, key: &str) -> Result<Vec<u8>, Error>;
+   }
+   ```
+
+5. Use const generics for compile-time values:
+   ```rust
+   // ❌ Bad
+   struct FixedArray {
+       data: Vec<u8>,
+   }
+   
+   // ✅ Good
+   struct FixedArray<const N: usize> {
+       data: [u8; N],
+   }
+   ```
+
+6. Use sealed traits for API control:
+   ```rust
+   // ❌ Bad
+   pub trait Error {}
+   
+   // ✅ Good
+   mod sealed {
+       pub trait Sealed {}
+   }
+   
+   pub trait Error: sealed::Sealed + std::fmt::Debug + std::fmt::Display {}
+   ```
+
+## Rationale
+
+- Builder pattern enables ergonomic construction
+- Error types provide better error handling
+- Generics enable code reuse
+- Async traits support asynchronous operations
+- Const generics enable compile-time optimizations
+- Sealed traits control API implementation
+
+## Examples
+
+### Good Example
+```rust
+use std::time::Duration;
+use async_trait::async_trait;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum ConfigError {
+    #[error("Invalid host: {0}")]
+    InvalidHost(String),
+    #[error("Invalid port: {0}")]
+    InvalidPort(u16),
+}
+
+#[derive(Debug)]
+struct Config {
+    host: String,
+    port: u16,
+    timeout: Duration,
+}
+
+#[derive(Default)]
+struct ConfigBuilder {
+    host: Option<String>,
+    port: Option<u16>,
+    timeout: Option<Duration>,
+}
+
+impl ConfigBuilder {
+    pub fn host(mut self, host: impl Into<String>) -> Self {
+        self.host = Some(host.into());
+        self
+    }
+    
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+    
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+    
+    pub fn build(self) -> Result<Config, ConfigError> {
+        let host = self.host.unwrap_or_default();
+        if host.is_empty() {
+            return Err(ConfigError::InvalidHost(host));
+        }
+        
+        let port = self.port.unwrap_or(8080);
+        if port == 0 {
+            return Err(ConfigError::InvalidPort(port));
+        }
+        
+        Ok(Config {
+            host,
+            port,
+            timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+pub trait Storage {
+    async fn get(&self, key: &str) -> Result<Vec<u8>, Error>;
+    async fn put(&self, key: &str, value: &[u8]) -> Result<(), Error>;
+}
+
+pub struct Database {
+    config: Config,
+}
+
+impl Database {
+    pub fn new() -> ConfigBuilder {
+        ConfigBuilder::default()
+    }
+    
+    pub async fn connect(config: Config) -> Result<Self, Error> {
+        // Implementation
+        Ok(Self { config })
+    }
+}
+
+#[async_trait::async_trait]
+impl Storage for Database {
+    async fn get(&self, key: &str) -> Result<Vec<u8>, Error> {
+        // Implementation
+        Ok(vec![])
+    }
+    
+    async fn put(&self, key: &str, value: &[u8]) -> Result<(), Error> {
+        // Implementation
+        Ok(())
+    }
+}
+
+pub struct FixedArray<const N: usize> {
+    data: [u8; N],
+}
+
+impl<const N: usize> FixedArray<N> {
+    pub fn new() -> Self {
+        Self {
+            data: [0; N],
+        }
+    }
+    
+    pub fn get(&self, index: usize) -> Option<&u8> {
+        self.data.get(index)
+    }
+    
+    pub fn set(&mut self, index: usize, value: u8) -> Option<&mut u8> {
+        self.data.get_mut(index).map(|v| {
+            *v = value;
+            v
+        })
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+pub trait Error: sealed::Sealed + std::fmt::Debug + std::fmt::Display {}
+
+impl sealed::Sealed for ConfigError {}
+impl Error for ConfigError {}
+```
+
+### Bad Example
+```rust
+struct Config {
+    host: String,
+    port: u16,
+    timeout: Duration,
+}
+
+impl Config {
+    fn new(host: String, port: u16, timeout: Duration) -> Self {
+        Self {
+            host,
+            port,
+            timeout,
+        }
+    }
+}
+
+trait Storage {
+    fn get(&self, key: &str) -> Result<Vec<u8>, String>;
+    fn put(&self, key: &str, value: &[u8]) -> Result<(), String>;
+}
+
+struct Database {
+    config: Config,
+}
+
+impl Database {
+    fn new(config: Config) -> Self {
+        Self { config }
+    }
+}
+
+impl Storage for Database {
+    fn get(&self, key: &str) -> Result<Vec<u8>, String> {
+        // Implementation
+        Ok(vec![])
+    }
+    
+    fn put(&self, key: &str, value: &[u8]) -> Result<(), String> {
+        // Implementation
+        Ok(())
+    }
+}
+
+struct FixedArray {
+    data: Vec<u8>,
+}
+
+impl FixedArray {
+    fn new(size: usize) -> Self {
+        Self {
+            data: vec![0; size],
+        }
+    }
+}
+``` 

@@ -1,0 +1,214 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Lifetime Management Best Practices
+
+This rule enforces best practices for managing lifetimes in Rust code.
+
+## Rules
+
+1. Use explicit lifetime parameters:
+   ```rust
+   // ❌ Bad
+   struct User {
+       name: &str,
+   }
+   
+   // ✅ Good
+   struct User<'a> {
+       name: &'a str,
+   }
+   ```
+
+2. Use lifetime elision when possible:
+   ```rust
+   // ❌ Bad
+   fn get_first<'a>(slice: &'a [u32]) -> &'a u32 {
+       &slice[0]
+   }
+   
+   // ✅ Good
+   fn get_first(slice: &[u32]) -> &u32 {
+       &slice[0]
+   }
+   ```
+
+3. Use `'static` appropriately:
+   ```rust
+   // ❌ Bad
+   struct Config {
+       data: &str,
+   }
+   
+   // ✅ Good
+   struct Config {
+       data: &'static str,
+   }
+   ```
+
+4. Use lifetime bounds for trait objects:
+   ```rust
+   // ❌ Bad
+   struct Container {
+       data: Box<dyn Display>,
+   }
+   
+   // ✅ Good
+   struct Container {
+       data: Box<dyn Display + 'static>,
+   }
+   ```
+
+5. Use lifetime parameters in traits:
+   ```rust
+   // ❌ Bad
+   trait Reader {
+       fn read(&self) -> &str;
+   }
+   
+   // ✅ Good
+   trait Reader<'a> {
+       fn read(&'a self) -> &'a str;
+   }
+   ```
+
+6. Use lifetime subtyping:
+   ```rust
+   // ❌ Bad
+   struct Container<'a> {
+       data: &'a str,
+   }
+   
+   // ✅ Good
+   struct Container<'a: 'b, 'b> {
+       data: &'a str,
+       other: &'b str,
+   }
+   ```
+
+## Rationale
+
+- Explicit lifetimes prevent dangling references
+- Lifetime elision reduces boilerplate
+- `'static` indicates truly static data
+- Lifetime bounds ensure trait object validity
+- Trait lifetime parameters enable flexible implementations
+- Lifetime subtyping enables complex lifetime relationships
+
+## Examples
+
+### Good Example
+```rust
+use std::fmt::Display;
+
+#[derive(Debug)]
+struct User<'a> {
+    name: &'a str,
+    email: &'a str,
+}
+
+impl<'a> User<'a> {
+    fn new(name: &'a str, email: &'a str) -> Self {
+        Self { name, email }
+    }
+    
+    fn get_name(&self) -> &str {
+        self.name
+    }
+}
+
+#[derive(Debug)]
+struct Config {
+    version: &'static str,
+    data: &'static str,
+}
+
+impl Config {
+    fn new() -> Self {
+        Self {
+            version: "1.0.0",
+            data: "default",
+        }
+    }
+}
+
+struct Container {
+    data: Box<dyn Display + 'static>,
+}
+
+impl Container {
+    fn new<T: Display + 'static>(data: T) -> Self {
+        Self {
+            data: Box::new(data),
+        }
+    }
+}
+
+trait Reader<'a> {
+    fn read(&'a self) -> &'a str;
+}
+
+struct StringReader<'a> {
+    data: &'a str,
+}
+
+impl<'a> Reader<'a> for StringReader<'a> {
+    fn read(&'a self) -> &'a str {
+        self.data
+    }
+}
+
+struct LifetimeContainer<'a: 'b, 'b> {
+    primary: &'a str,
+    secondary: &'b str,
+}
+
+impl<'a: 'b, 'b> LifetimeContainer<'a, 'b> {
+    fn new(primary: &'a str, secondary: &'b str) -> Self {
+        Self {
+            primary,
+            secondary,
+        }
+    }
+    
+    fn get_primary(&self) -> &str {
+        self.primary
+    }
+    
+    fn get_secondary(&self) -> &str {
+        self.secondary
+    }
+}
+```
+
+### Bad Example
+```rust
+struct User {
+    name: &str,
+    email: &str,
+}
+
+struct Config {
+    data: &str,
+}
+
+struct Container {
+    data: Box<dyn Display>,
+}
+
+trait Reader {
+    fn read(&self) -> &str;
+}
+
+struct StringReader {
+    data: &str,
+}
+
+impl Reader for StringReader {
+    fn read(&self) -> &str {
+        self.data
+    }
+}
+``` 

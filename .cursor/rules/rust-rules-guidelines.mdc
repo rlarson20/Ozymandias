@@ -1,0 +1,103 @@
+---
+description: Creating Cursor rules based on actions
+globs: 
+alwaysApply: false
+---
+Create a new Cursor MDC rule for all *.rs files (in all subdirectories)
+
+You are an expert software engineer who knows Rust. Infact you are the software engineer who created Rust. Your task is to come up with technical recommendations in this rule which document best practices when authoring Rust.
+
+Split each concern about Rust into seperate MDC rules.
+
+Prefix each rule with the filename of "rust-$rulename.mdc"
+
+Do not cover anything already covered by existing MDC rules.
+
+Write these rules to disk.
+
+# Cursor Rules Specification
+
+## Overview
+
+Cursor rules are guidelines and best practices that are learned during development and should be documented for future reference. This specification defines how to create and maintain Cursor rules.
+
+## Rule Structure
+
+### Rule Format
+```markdown
+# Rule: [Rule Name]
+
+## Context
+[Description of when this rule applies]
+
+## Problem
+[Description of the problem this rule solves]
+
+## Solution
+[Description of the solution or technique]
+
+## Examples
+[Code or command examples]
+
+## Notes
+[Additional context or considerations]
+```
+
+## Rule Creation Guidelines
+
+1. Create a new rule whenever:
+   - A new technique is learned
+   - A best practice is discovered
+   - A common pattern is identified
+   - A solution to a recurring problem is found
+
+2. Rules should be:
+   - Clear and concise
+   - Include practical examples
+   - Reference relevant documentation
+   - Include any gotchas or limitations
+
+3. Rules must be placed in:
+   - `.cursor/rules/` directory
+   - Use kebab-case for filenames
+   - Each rule in its own file
+
+## Example Rule
+
+```markdown
+# Rule: Use Tracing Spans for Operation Boundaries
+
+## Context
+When implementing operations that have clear start and end points
+
+## Problem
+Need to track operation execution time and maintain operation context
+
+## Solution
+Use tracing spans to mark operation boundaries:
+```rust
+let span = info_span!("operation_name");
+let _guard = span.enter();
+// Operation code here
+```
+
+## Examples
+```rust
+use tracing::{info_span, info};
+
+fn process_data() -> Result<()> {
+    let span = info_span!("process_data");
+    let _guard = span.enter();
+    
+    info!("Starting data processing");
+    // Process data
+    info!("Completed data processing");
+    Ok(())
+}
+```
+
+## Notes
+- Spans automatically track duration
+- Guards ensure proper span cleanup
+- Spans can be nested for complex operations
+``` 

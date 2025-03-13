@@ -1,0 +1,146 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Async/Await Best Practices
+
+This rule enforces best practices for asynchronous programming in Rust.
+
+## Rules
+
+1. Use `async/await` instead of raw futures:
+   ```rust
+   // ❌ Bad
+   fn process_data() -> impl Future<Output = Result<(), Error>> {
+       future::ready(Ok(()))
+   }
+   
+   // ✅ Good
+   async fn process_data() -> Result<(), Error> {
+       Ok(())
+   }
+   ```
+
+2. Use `tokio::spawn` for CPU-bound tasks:
+   ```rust
+   // ✅ Good
+   tokio::spawn(async move {
+       // CPU-intensive work
+   });
+   ```
+
+3. Use `tokio::spawn_blocking` for blocking operations:
+   ```rust
+   // ✅ Good
+   let result = tokio::spawn_blocking(|| {
+       // Blocking operation
+   }).await?;
+   ```
+
+4. Implement proper error handling in async contexts:
+   ```rust
+   // ❌ Bad
+   async fn fetch_data() -> Result<Data, Box<dyn Error>> {
+       let response = reqwest::get("url").await?;
+       Ok(response.json().await?)
+   }
+   
+   // ✅ Good
+   async fn fetch_data() -> Result<Data, FetchError> {
+       let response = reqwest::get("url")
+           .await
+           .map_err(FetchError::Network)?;
+       response.json()
+           .await
+           .map_err(FetchError::Parse)
+   }
+   ```
+
+5. Use `select!` for concurrent operations:
+   ```rust
+   // ✅ Good
+   use tokio::select;
+   
+   async fn handle_multiple_operations() {
+       select! {
+           result1 = operation1() => handle_result1(result1),
+           result2 = operation2() => handle_result2(result2),
+           _ = timeout(Duration::from_secs(5)) => handle_timeout(),
+       }
+   }
+   ```
+
+6. Implement proper cancellation:
+   ```rust
+   // ✅ Good
+   struct Task {
+       shutdown: tokio::sync::broadcast::Sender<()>,
+   }
+   
+   impl Task {
+       async fn run(&self) {
+           let mut rx = self.shutdown.subscribe();
+           loop {
+               tokio::select! {
+                   _ = &mut rx => break,
+                   result = self.process() => {
+                       if let Err(e) = result {
+                           log::error!("Error: {}", e);
+                       }
+                   }
+               }
+           }
+       }
+   }
+   ```
+
+## Rationale
+
+- Async/await syntax is more readable and maintainable than raw futures
+- Proper task spawning prevents blocking the async runtime
+- Error handling in async contexts requires special consideration
+- `select!` provides clean concurrent operation handling
+- Proper cancellation is crucial for resource cleanup
+- Blocking operations should be isolated from async code
+
+## Examples
+
+### Good Example
+```rust
+use tokio::time::{timeout, Duration};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+enum FetchError {
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+    #[error("Timeout")]
+    Timeout,
+    #[error("Parse error: {0}")]
+    Parse(#[from] serde_json::Error),
+}
+
+async fn fetch_with_timeout(url: &str) -> Result<Data, FetchError> {
+    let timeout_duration = Duration::from_secs(5);
+    
+    let result = timeout(timeout_duration, async {
+        let response = reqwest::get(url).await?;
+        response.json().await
+    }).await;
+    
+    match result {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(e)) => Err(FetchError::Parse(e)),
+        Err(_) => Err(FetchError::Timeout),
+    }
+}
+```
+
+### Bad Example
+```rust
+async fn fetch_data(url: &str) -> Result<Data, Box<dyn Error>> {
+    let response = reqwest::get(url).await?;
+    Ok(response.json().await?)
+}
+``` 

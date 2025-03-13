@@ -1,0 +1,152 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Dependency Management Best Practices
+
+This rule enforces best practices for managing dependencies in Rust projects.
+
+## Rules
+
+1. Use specific version constraints:
+   ```rust
+   // ❌ Bad
+   [dependencies]
+   serde = "*"
+   
+   // ✅ Good
+   [dependencies]
+   serde = "1.0"
+   tokio = { version = "1.0", features = ["full"] }
+   ```
+
+2. Use workspace for multiple crates:
+   ```rust
+   // ❌ Bad
+   // Multiple Cargo.toml files with duplicated dependencies
+   
+   // ✅ Good
+   [workspace]
+   members = ["core", "api", "cli"]
+   
+   [workspace.dependencies]
+   serde = "1.0"
+   tokio = "1.0"
+   ```
+
+3. Use `[dev-dependencies]` for test-only dependencies:
+   ```rust
+   // ❌ Bad
+   [dependencies]
+   mockall = "0.11"
+   
+   // ✅ Good
+   [dev-dependencies]
+   mockall = "0.11"
+   ```
+
+4. Use `[target.'cfg(...)'.dependencies]` for conditional dependencies:
+   ```rust
+   // ❌ Bad
+   [dependencies]
+   windows = "0.48"
+   
+   // ✅ Good
+   [target.'cfg(windows)'.dependencies]
+   windows = "0.48"
+   ```
+
+5. Use `[patch.crates-io]` for local development:
+   ```rust
+   // ❌ Bad
+   // Modifying dependencies directly
+   
+   // ✅ Good
+   [patch.crates-io]
+   my-crate = { path = "../my-crate" }
+   ```
+
+6. Use `[features]` for optional functionality:
+   ```rust
+   // ❌ Bad
+   // Always including all dependencies
+   
+   // ✅ Good
+   [features]
+   default = ["std"]
+   std = ["dep:std"]
+   no_std = []
+   
+   [dependencies]
+   std = { version = "1.0", optional = true }
+   ```
+
+## Rationale
+
+- Specific versions ensure reproducible builds
+- Workspaces reduce dependency duplication
+- Dev dependencies keep production builds lean
+- Conditional dependencies support cross-platform
+- Local patches enable development of dependencies
+- Features enable optional functionality
+
+## Examples
+
+### Good Example
+```rust
+[package]
+name = "my-project"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["core", "api"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+
+[dependencies]
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+mockall = "0.11"
+tokio-test = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = "0.48"
+
+[features]
+default = ["std"]
+std = ["dep:std"]
+no_std = []
+
+[dependencies.std]
+version = "1.0"
+optional = true
+
+[patch.crates-io]
+my-fork = { git = "https://github.com/me/my-fork" }
+```
+
+### Bad Example
+```rust
+[package]
+name = "my-project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "*"
+tokio = "*"
+mockall = "0.11"
+windows = "0.48"
+libc = "0.2"
+``` 

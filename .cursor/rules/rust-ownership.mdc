@@ -1,0 +1,122 @@
+# Rust Ownership and Borrowing Best Practices
+
+This rule enforces best practices for handling ownership and borrowing in Rust code.
+
+## Rules
+
+1. Prefer references over owned values when possible:
+   ```rust
+   // ❌ Bad
+   fn process_string(s: String) { }
+   
+   // ✅ Good
+   fn process_string(s: &str) { }
+   ```
+
+2. Use `&mut` only when necessary:
+   ```rust
+   // ❌ Bad
+   fn modify_data(data: &mut Vec<i32>) {
+       data.push(1);
+   }
+   
+   // ✅ Good
+   fn read_data(data: &[i32]) {
+       println!("{}", data.len());
+   }
+   ```
+
+3. Implement `Clone` and `Copy` traits appropriately:
+   ```rust
+   // ✅ Good
+   #[derive(Copy, Clone)]
+   struct Point {
+       x: i32,
+       y: i32,
+   }
+   ```
+
+4. Use `to_owned()` or `to_string()` instead of `clone()` for strings:
+   ```rust
+   // ❌ Bad
+   let owned = string_slice.clone();
+   
+   // ✅ Good
+   let owned = string_slice.to_owned();
+   ```
+
+5. Use `Cow` for flexible ownership:
+   ```rust
+   // ✅ Good
+   use std::borrow::Cow;
+   
+   fn process_text(text: Cow<str>) {
+       // Can work with both owned and borrowed strings
+   }
+   ```
+
+6. Implement `Drop` trait for cleanup:
+   ```rust
+   // ✅ Good
+   struct Resource {
+       handle: RawHandle,
+   }
+   
+   impl Drop for Resource {
+       fn drop(&mut self) {
+           unsafe {
+               close_handle(self.handle);
+           }
+       }
+   }
+   ```
+
+## Rationale
+
+- Proper ownership management prevents memory leaks and data races
+- References reduce unnecessary cloning and memory allocation
+- `Clone` and `Copy` traits should be implemented when it makes sense
+- `Cow` provides flexibility in ownership semantics
+- `Drop` ensures proper resource cleanup
+- Minimizing mutable references reduces potential for bugs
+
+## Examples
+
+### Good Example
+```rust
+use std::borrow::Cow;
+
+struct TextProcessor {
+    text: Cow<'static, str>,
+}
+
+impl TextProcessor {
+    fn new(text: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            text: text.into(),
+        }
+    }
+    
+    fn process(&self) -> String {
+        // Can work with both borrowed and owned text
+        self.text.to_uppercase()
+    }
+}
+```
+
+### Bad Example
+```rust
+struct TextProcessor {
+    text: String,
+}
+
+impl TextProcessor {
+    fn new(text: String) -> Self {
+        Self { text }
+    }
+    
+    fn process(&self) -> String {
+        self.text.to_uppercase()
+    }
+}
+``` 

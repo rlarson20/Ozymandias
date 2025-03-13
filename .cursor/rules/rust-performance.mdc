@@ -1,0 +1,264 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Performance Optimization Best Practices
+
+This rule enforces best practices for optimizing Rust code performance.
+
+## Rules
+
+1. Use `Vec` with capacity:
+   ```rust
+   // ❌ Bad
+   let mut vec = Vec::new();
+   for i in 0..1000 {
+       vec.push(i);
+   }
+   
+   // ✅ Good
+   let mut vec = Vec::with_capacity(1000);
+   for i in 0..1000 {
+       vec.push(i);
+   }
+   ```
+
+2. Use `String` with capacity:
+   ```rust
+   // ❌ Bad
+   let mut s = String::new();
+   for _ in 0..1000 {
+       s.push('a');
+   }
+   
+   // ✅ Good
+   let mut s = String::with_capacity(1000);
+   for _ in 0..1000 {
+       s.push('a');
+   }
+   ```
+
+3. Use `HashMap` with capacity:
+   ```rust
+   // ❌ Bad
+   let mut map = HashMap::new();
+   for i in 0..1000 {
+       map.insert(i, i);
+   }
+   
+   // ✅ Good
+   let mut map = HashMap::with_capacity(1000);
+   for i in 0..1000 {
+       map.insert(i, i);
+   }
+   ```
+
+4. Use CPU profiling:
+   ```rust
+   // ❌ Bad
+   fn process(data: &[u8]) {
+       // No profiling
+   }
+   
+   // ✅ Good
+   use pprof::ProfilerGuard;
+   
+   fn process(data: &[u8]) {
+       let guard = ProfilerGuard::new(100).unwrap();
+       // Process data
+       if let Ok(report) = guard.report().build() {
+           report.write_file("profile.pb").unwrap();
+       }
+   }
+   ```
+
+5. Use memory profiling:
+   ```rust
+   // ❌ Bad
+   fn allocate() {
+       let mut vec = Vec::new();
+       for i in 0..1000 {
+           vec.push(i);
+       }
+   }
+   
+   // ✅ Good
+   use dhat::{Dhat, DhatAlloc};
+   use std::alloc::Global;
+   
+   #[global_allocator]
+   static ALLOCATOR: DhatAlloc = DhatAlloc;
+   
+   fn allocate() {
+       let _dhat = Dhat::start_heap_profiling();
+       let mut vec = Vec::new();
+       for i in 0..1000 {
+           vec.push(i);
+       }
+       drop(_dhat);
+   }
+   ```
+
+6. Use performance attributes:
+   ```rust
+   // ❌ Bad
+   fn process(data: &[u8]) {
+       // No optimization hints
+   }
+   
+   // ✅ Good
+   #[inline(always)]
+   fn process(data: &[u8]) {
+       // Implementation
+   }
+   
+   #[cold]
+   fn handle_error(error: Error) {
+       // Error handling
+   }
+   ```
+
+## Rationale
+
+- Pre-allocating capacity reduces reallocations
+- Profiling helps identify bottlenecks
+- Memory profiling reveals allocation patterns
+- Performance attributes guide compiler optimization
+- Proper data structure usage improves efficiency
+- Efficient memory management reduces overhead
+
+## Examples
+
+### Good Example
+```rust
+use std::collections::HashMap;
+use std::time::Instant;
+use pprof::ProfilerGuard;
+use dhat::{Dhat, DhatAlloc};
+use std::alloc::Global;
+
+#[global_allocator]
+static ALLOCATOR: DhatAlloc = DhatAlloc;
+
+struct Processor {
+    data: Vec<u8>,
+    cache: HashMap<String, String>,
+}
+
+impl Processor {
+    fn new() -> Self {
+        Self {
+            data: Vec::with_capacity(1000),
+            cache: HashMap::with_capacity(100),
+        }
+    }
+    
+    #[inline(always)]
+    fn process(&mut self, input: &[u8]) -> Result<(), Error> {
+        let start = Instant::now();
+        let guard = ProfilerGuard::new(100).unwrap();
+        
+        // Process data
+        self.data.clear();
+        self.data.extend_from_slice(input);
+        
+        // Profile memory allocations
+        let _dhat = Dhat::start_heap_profiling();
+        
+        // Process with cache
+        for chunk in self.data.chunks(16) {
+            let key = String::with_capacity(chunk.len());
+            if let Some(value) = self.cache.get(&key) {
+                // Use cached value
+            } else {
+                // Process and cache
+                self.cache.insert(key, String::with_capacity(32));
+            }
+        }
+        
+        drop(_dhat);
+        
+        if let Ok(report) = guard.report().build() {
+            report.write_file("profile.pb").unwrap();
+        }
+        
+        let duration = start.elapsed();
+        println!("Processing took {:?}", duration);
+        
+        Ok(())
+    }
+    
+    #[cold]
+    fn handle_error(error: Error) {
+        eprintln!("Error: {}", error);
+    }
+}
+
+#[derive(Debug)]
+enum Error {
+    InvalidInput,
+    ProcessingFailed,
+}
+
+fn main() {
+    let mut processor = Processor::new();
+    let input = vec![0; 1000];
+    
+    match processor.process(&input) {
+        Ok(_) => println!("Processing successful"),
+        Err(e) => processor.handle_error(e),
+    }
+}
+```
+
+### Bad Example
+```rust
+use std::collections::HashMap;
+
+struct Processor {
+    data: Vec<u8>,
+    cache: HashMap<String, String>,
+}
+
+impl Processor {
+    fn new() -> Self {
+        Self {
+            data: Vec::new(),
+            cache: HashMap::new(),
+        }
+    }
+    
+    fn process(&mut self, input: &[u8]) -> Result<(), String> {
+        // No capacity pre-allocation
+        self.data = input.to_vec();
+        
+        // No profiling
+        for chunk in self.data.chunks(16) {
+            let key = String::new();
+            if let Some(value) = self.cache.get(&key) {
+                // Use cached value
+            } else {
+                // Process and cache
+                self.cache.insert(key, String::new());
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn handle_error(error: String) {
+        println!("Error: {}", error);
+    }
+}
+
+fn main() {
+    let mut processor = Processor::new();
+    let input = vec![0; 1000];
+    
+    match processor.process(&input) {
+        Ok(_) => println!("Processing successful"),
+        Err(e) => processor.handle_error(e),
+    }
+}
+``` 

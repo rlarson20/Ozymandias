@@ -1,0 +1,247 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Git Repository Best Practices
+
+This rule enforces best practices for managing Git repositories in the project.
+
+## Rules
+
+1. Use meaningful commit messages:
+   ```bash
+   # ❌ Bad
+   git commit -m "fix"
+   git commit -m "update"
+   git commit -m "stuff"
+   
+   # ✅ Good
+   git commit -m "fix: resolve memory leak in concurrent processing"
+   git commit -m "feat: add support for custom error types"
+   git commit -m "docs: update API documentation with examples"
+   ```
+
+2. Use feature branches:
+   ```bash
+   # ❌ Bad
+   git checkout main
+   git commit -m "feat: add new feature"
+   git push origin main
+   
+   # ✅ Good
+   git checkout -b feature/add-custom-errors
+   git commit -m "feat: add support for custom error types"
+   git push origin feature/add-custom-errors
+   git create-pull-request
+   ```
+
+3. Keep commits atomic:
+   ```bash
+   # ❌ Bad
+   git add .
+   git commit -m "feat: implement user authentication and add tests"
+   
+   # ✅ Good
+   git add src/auth.rs
+   git commit -m "feat: implement user authentication"
+   git add tests/auth_test.rs
+   git commit -m "test: add authentication tests"
+   ```
+
+4. Use `.gitignore` effectively:
+   ```gitignore
+   # ❌ Bad
+   # No .gitignore file
+   
+   # ✅ Good
+   # IDE and editor files
+   .idea/
+   .vscode/
+   *.swp
+   *.swo
+   
+   # Build artifacts
+   target/
+   dist/
+   *.o
+   *.obj
+   
+   # Dependencies
+   node_modules/
+   vendor/
+   
+   # Environment files
+   .env
+   .env.local
+   
+   # Logs
+   *.log
+   logs/
+   ```
+
+5. Use Git hooks for quality checks:
+   ```bash
+   # ❌ Bad
+   # No pre-commit hooks
+   
+   # ✅ Good
+   # .git/hooks/pre-commit
+   #!/bin/sh
+   cargo fmt -- --check
+   cargo clippy
+   cargo test
+   ```
+
+6. Maintain a clean commit history:
+   ```bash
+   # ❌ Bad
+   git commit -m "fix typo"
+   git commit -m "fix another typo"
+   git commit -m "fix more typos"
+   
+   # ✅ Good
+   git commit --amend -m "fix: correct typos in documentation"
+   ```
+
+## Rationale
+
+- Meaningful commit messages improve code history readability
+- Feature branches enable parallel development and code review
+- Atomic commits make changes easier to review and revert
+- Effective `.gitignore` prevents committing unnecessary files
+- Git hooks ensure code quality before commits
+- Clean commit history makes the project more maintainable
+
+## Examples
+
+### Good Example
+```bash
+# Initialize repository with proper structure
+git init
+cat > .gitignore << EOL
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+target/
+dist/
+*.o
+*.obj
+
+# Dependencies
+node_modules/
+vendor/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+EOL
+
+# Set up pre-commit hooks
+cat > .git/hooks/pre-commit << EOL
+#!/bin/sh
+cargo fmt -- --check
+cargo clippy
+cargo test
+EOL
+chmod +x .git/hooks/pre-commit
+
+# Initial commit
+git add .
+git commit -m "chore: initialize project structure"
+
+# Create feature branch
+git checkout -b feature/add-error-handling
+
+# Make atomic commits
+git add src/error.rs
+git commit -m "feat: add custom error types"
+
+git add tests/error_test.rs
+git commit -m "test: add error type tests"
+
+git add docs/error.md
+git commit -m "docs: document error handling"
+
+# Push feature branch
+git push origin feature/add-error-handling
+
+# Create pull request
+gh pr create --title "Add custom error handling" --body "Implements structured error handling with custom types"
+```
+
+### Bad Example
+```bash
+# Initialize repository without proper structure
+git init
+
+# Commit everything without .gitignore
+git add .
+git commit -m "initial commit"
+
+# Work directly on main branch
+git checkout main
+
+# Make large, unrelated commits
+git add .
+git commit -m "update stuff"
+
+# Push directly to main
+git push origin main
+
+# No pull requests or code review
+```
+
+## Additional Guidelines
+
+1. Branch Naming:
+   - Use feature branches: `feature/description`
+   - Use bugfix branches: `fix/description`
+   - Use release branches: `release/v1.0.0`
+   - Use hotfix branches: `hotfix/description`
+
+2. Commit Message Format:
+   ```
+   type(scope): description
+
+   [optional body]
+
+   [optional footer]
+   ```
+   Types:
+   - feat: New feature
+   - fix: Bug fix
+   - docs: Documentation
+   - style: Formatting
+   - refactor: Code restructuring
+   - test: Adding tests
+   - chore: Maintenance
+
+3. Pull Request Guidelines:
+   - Keep PRs focused and small
+   - Include clear description
+   - Reference related issues
+   - Add screenshots for UI changes
+   - Request specific reviewers
+
+4. Code Review Process:
+   - Review within 24 hours
+   - Provide constructive feedback
+   - Test changes locally
+   - Approve only when satisfied
+   - Merge after approval
+
+5. Release Process:
+   - Tag releases with semantic versioning
+   - Update CHANGELOG.md
+   - Create release notes
+   - Deploy to staging first
+   - Monitor after deployment 

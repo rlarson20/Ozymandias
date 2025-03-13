@@ -1,0 +1,162 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Module Organization and Project Structure Best Practices
+
+This rule enforces best practices for organizing Rust code into modules and structuring projects.
+
+## Rules
+
+1. Use `mod.rs` for module organization:
+   ```rust
+   // ❌ Bad
+   // lib.rs
+   pub struct User;
+   
+   // ✅ Good
+   // lib.rs
+   pub mod user;
+   
+   // user/mod.rs
+   pub struct User;
+   ```
+
+2. Use `pub(crate)` for crate-internal visibility:
+   ```rust
+   // ❌ Bad
+   pub struct InternalType;
+   
+   // ✅ Good
+   pub(crate) struct InternalType;
+   ```
+
+3. Use `pub use` for re-exports:
+   ```rust
+   // ❌ Bad
+   pub use crate::internal::Type;
+   
+   // ✅ Good
+   pub use crate::internal::Type;
+   pub use crate::internal::Error;
+   ```
+
+4. Use `cfg` for conditional compilation:
+   ```rust
+   // ❌ Bad
+   #[cfg(test)]
+   struct TestOnly;
+   
+   // ✅ Good
+   #[cfg(feature = "test")]
+   struct TestOnly;
+   ```
+
+5. Use `#[allow]` sparingly and document why:
+   ```rust
+   // ❌ Bad
+   #[allow(unused_imports)]
+   use std::io;
+   
+   // ✅ Good
+   // Required for backward compatibility
+   #[allow(deprecated)]
+   use old_api::function;
+   ```
+
+6. Use `#[cfg_attr]` for conditional attributes:
+   ```rust
+   // ❌ Bad
+   #[cfg(test)]
+   #[derive(Debug)]
+   struct TestStruct;
+   
+   // ✅ Good
+   #[cfg_attr(test, derive(Debug))]
+   struct TestStruct;
+   ```
+
+## Rationale
+
+- Proper module organization improves code maintainability
+- Visibility control prevents API leakage
+- Re-exports provide clean public APIs
+- Conditional compilation enables feature flags
+- Documentation of `#[allow]` helps future maintainers
+- `#[cfg_attr]` reduces code duplication
+
+## Examples
+
+### Good Example
+```rust
+// lib.rs
+pub mod user;
+pub mod auth;
+pub mod error;
+
+pub use error::Error;
+pub use user::User;
+
+// user/mod.rs
+use crate::error::Error;
+
+pub struct User {
+    name: String,
+    email: String,
+}
+
+impl User {
+    pub fn new(name: String, email: String) -> Result<Self, Error> {
+        if !is_valid_email(&email) {
+            return Err(Error::InvalidEmail);
+        }
+        Ok(Self { name, email })
+    }
+}
+
+// error/mod.rs
+use std::fmt;
+
+#[derive(Debug)]
+pub enum Error {
+    InvalidEmail,
+    DatabaseError(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidEmail => write!(f, "Invalid email address"),
+            Self::DatabaseError(msg) => write!(f, "Database error: {}", msg),
+        }
+    }
+}
+
+// auth/mod.rs
+use crate::user::User;
+
+pub(crate) struct Auth {
+    user: User,
+}
+
+impl Auth {
+    pub(crate) fn new(user: User) -> Self {
+        Self { user }
+    }
+}
+```
+
+### Bad Example
+```rust
+// lib.rs
+pub struct User;
+pub struct Auth;
+pub enum Error;
+
+// No module organization
+pub fn process_user(user: User) -> Result<(), Error> {
+    // Implementation
+    Ok(())
+}
+``` 

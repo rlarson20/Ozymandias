@@ -1,0 +1,267 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rust Logging and Diagnostics Best Practices
+
+This rule enforces best practices for logging and diagnostics in Rust applications.
+
+## Rules
+
+1. Use structured logging:
+   ```rust
+   // ❌ Bad
+   println!("User {} logged in", user_id);
+   
+   // ✅ Good
+   info!(
+       user_id = %user_id,
+       ip = %ip_addr,
+       "User logged in"
+   );
+   ```
+
+2. Use appropriate log levels:
+   ```rust
+   // ❌ Bad
+   println!("Error: {}", error);
+   
+   // ✅ Good
+   error!(
+       error = %error,
+       "Failed to process request"
+   );
+   ```
+
+3. Use span for request tracing:
+   ```rust
+   // ❌ Bad
+   fn process_request(req: Request) {
+       info!("Processing request");
+       // Process request
+       info!("Request processed");
+   }
+   
+   // ✅ Good
+   fn process_request(req: Request) {
+       let span = info_span!("process_request", request_id = %req.id);
+       let _guard = span.enter();
+       // Process request
+   }
+   ```
+
+4. Use error context:
+   ```rust
+   // ❌ Bad
+   error!("Failed to connect");
+   
+   // ✅ Good
+   error!(
+       error = %err,
+       host = %host,
+       port = %port,
+       "Failed to connect to database"
+   );
+   ```
+
+5. Use metrics appropriately:
+   ```rust
+   // ❌ Bad
+   let start = std::time::Instant::now();
+   // Do work
+   println!("Took {:?}", start.elapsed());
+   
+   // ✅ Good
+   let start = std::time::Instant::now();
+   // Do work
+   metrics::histogram!(
+       "operation.duration",
+       start.elapsed().as_secs_f64(),
+       "operation" => "process"
+   );
+   ```
+
+6. Use diagnostic attributes:
+   ```rust
+   // ❌ Bad
+   #[derive(Debug)]
+   struct Error;
+   
+   // ✅ Good
+   #[derive(Debug, thiserror::Error)]
+   #[error("Failed to process request: {0}")]
+   struct RequestError(String);
+   
+   #[derive(Debug, thiserror::Error)]
+   enum Error {
+       #[error("Database error: {0}")]
+       Database(#[from] sqlx::Error),
+       #[error("Request error: {0}")]
+       Request(RequestError),
+   }
+   ```
+
+## Rationale
+
+- Structured logging enables better analysis
+- Log levels help filter information
+- Spans enable request tracing
+- Error context aids debugging
+- Metrics enable performance monitoring
+- Diagnostic attributes improve error handling
+
+## Examples
+
+### Good Example
+```rust
+use tracing::{info, error, info_span, Instrument};
+use metrics::{counter, histogram};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("Failed to process request: {0}")]
+struct RequestError(String);
+
+#[derive(Debug, Error)]
+enum Error {
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("Request error: {0}")]
+    Request(RequestError),
+}
+
+struct Request {
+    id: String,
+    user_id: String,
+    ip_addr: String,
+}
+
+struct Database {
+    host: String,
+    port: u16,
+}
+
+impl Database {
+    fn connect(&self) -> Result<(), Error> {
+        let span = info_span!("database.connect", host = %self.host, port = %self.port);
+        let _guard = span.enter();
+        
+        let start = std::time::Instant::now();
+        let result = self.connect_internal();
+        histogram!(
+            "database.connect.duration",
+            start.elapsed().as_secs_f64(),
+            "host" => self.host.clone()
+        );
+        
+        result.map_err(|e| {
+            error!(
+                error = %e,
+                host = %self.host,
+                port = %self.port,
+                "Failed to connect to database"
+            );
+            Error::Database(e)
+        })
+    }
+    
+    fn connect_internal(&self) -> Result<(), sqlx::Error> {
+        // Implementation
+        Ok(())
+    }
+}
+
+struct Service {
+    db: Database,
+}
+
+impl Service {
+    fn process_request(&self, req: Request) -> Result<(), Error> {
+        let span = info_span!(
+            "process_request",
+            request_id = %req.id,
+            user_id = %req.user_id,
+            ip = %req.ip_addr
+        );
+        
+        async {
+            info!(
+                request_id = %req.id,
+                user_id = %req.user_id,
+                "Processing request"
+            );
+            
+            let start = std::time::Instant::now();
+            let result = self.process_internal(req).await;
+            histogram!(
+                "request.processing.duration",
+                start.elapsed().as_secs_f64(),
+                "request_id" => req.id
+            );
+            
+            match &result {
+                Ok(_) => {
+                    info!(
+                        request_id = %req.id,
+                        user_id = %req.user_id,
+                        "Request processed successfully"
+                    );
+                    counter!("request.success", 1);
+                }
+                Err(e) => {
+                    error!(
+                        error = %e,
+                        request_id = %req.id,
+                        user_id = %req.user_id,
+                        "Failed to process request"
+                    );
+                    counter!("request.error", 1);
+                }
+            }
+            
+            result
+        }
+        .instrument(span)
+    }
+    
+    async fn process_internal(&self, req: Request) -> Result<(), Error> {
+        // Implementation
+        Ok(())
+    }
+}
+```
+
+### Bad Example
+```rust
+struct Request {
+    id: String,
+    user_id: String,
+}
+
+struct Service {
+    db: Database,
+}
+
+impl Service {
+    fn process_request(&self, req: Request) -> Result<(), Error> {
+        println!("Processing request {}", req.id);
+        
+        let start = std::time::Instant::now();
+        let result = self.process_internal(req);
+        println!("Took {:?}", start.elapsed());
+        
+        match result {
+            Ok(_) => println!("Success"),
+            Err(e) => println!("Error: {}", e),
+        }
+        
+        result
+    }
+    
+    fn process_internal(&self, req: Request) -> Result<(), Error> {
+        // Implementation
+        Ok(())
+    }
+}
+``` 

@@ -1,0 +1,205 @@
+# Rust Documentation Best Practices
+
+This rule enforces best practices for documenting Rust code.
+
+## Rules
+
+1. Document all public APIs:
+   ```rust
+   // ❌ Bad
+   pub struct User {
+       pub name: String,
+   }
+   
+   // ✅ Good
+   /// Represents a user in the system.
+   /// 
+   /// This struct contains basic user information and can be used
+   /// for authentication and authorization.
+   pub struct User {
+       /// The user's full name
+       pub name: String,
+   }
+   ```
+
+2. Include examples in documentation:
+   ```rust
+   // ✅ Good
+   /// Creates a new user with the given name.
+   /// 
+   /// # Examples
+   /// 
+   /// ```
+   /// let user = User::new("John Doe");
+   /// assert_eq!(user.name, "John Doe");
+   /// ```
+   pub fn new(name: &str) -> Self {
+       Self {
+           name: name.to_string(),
+       }
+   }
+   ```
+
+3. Document error conditions:
+   ```rust
+   // ✅ Good
+   /// Parses a string into a User object.
+   /// 
+   /// # Errors
+   /// 
+   /// Returns an error if:
+   /// - The string is empty
+   /// - The string contains invalid characters
+   /// 
+   /// # Examples
+   /// 
+   /// ```
+   /// let user = User::from_str("John Doe")?;
+   /// ```
+   pub fn from_str(s: &str) -> Result<Self, ParseError> {
+       // Implementation
+   }
+   ```
+
+4. Use `#[must_use]` for important return values:
+   ```rust
+   // ✅ Good
+   /// Performs a critical operation that must be handled.
+   /// 
+   /// # Examples
+   /// 
+   /// ```
+   /// let result = critical_operation();
+   /// if let Err(e) = result {
+   ///     eprintln!("Operation failed: {}", e);
+   /// }
+   /// ```
+   #[must_use]
+   pub fn critical_operation() -> Result<(), Error> {
+       // Implementation
+   }
+   ```
+
+5. Document safety requirements for unsafe code:
+   ```rust
+   // ✅ Good
+   /// Performs a low-level memory operation.
+   /// 
+   /// # Safety
+   /// 
+   /// This function is unsafe because it performs raw pointer arithmetic.
+   /// The caller must ensure:
+   /// - The pointer is valid and properly aligned
+   /// - The memory region is not deallocated while in use
+   /// - The operation won't cause undefined behavior
+   /// 
+   /// # Examples
+   /// 
+   /// ```
+   /// let ptr = &mut 42 as *mut i32;
+   /// unsafe {
+   ///     modify_memory(ptr);
+   /// }
+   /// ```
+   pub unsafe fn modify_memory(ptr: *mut i32) {
+       // Implementation
+   }
+   ```
+
+6. Use module-level documentation:
+   ```rust
+   // ✅ Good
+   //! User management module
+   //! 
+   //! This module provides functionality for managing users in the system,
+   //! including creation, authentication, and authorization.
+   //! 
+   //! # Examples
+   //! 
+   //! ```
+   //! use user_management::User;
+   //! 
+   //! let user = User::new("John Doe");
+   //! ```
+   ```
+
+## Rationale
+
+- Documentation is crucial for API usability
+- Examples help users understand how to use the code
+- Error documentation prevents misuse
+- `#[must_use]` prevents ignoring important results
+- Safety documentation is critical for unsafe code
+- Module-level documentation provides context
+
+## Examples
+
+### Good Example
+```rust
+//! User authentication and authorization module
+//! 
+//! This module provides secure user authentication and authorization
+//! functionality using industry-standard practices.
+
+use std::error::Error;
+use std::fmt;
+
+/// Represents a user in the system with authentication capabilities.
+/// 
+/// This struct contains user information and methods for authentication.
+/// It implements secure password hashing and session management.
+/// 
+/// # Examples
+/// 
+/// ```
+/// let mut user = User::new("john@example.com", "password123");
+/// assert!(user.verify_password("password123"));
+/// ```
+pub struct User {
+    /// The user's email address, used for authentication
+    email: String,
+    /// The hashed password
+    password_hash: String,
+}
+
+impl User {
+    /// Creates a new user with the given email and password.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `email` - The user's email address
+    /// * `password` - The user's password (will be hashed)
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - The email is invalid
+    /// - The password is too weak
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// let user = User::new("john@example.com", "password123")?;
+    /// ```
+    pub fn new(email: &str, password: &str) -> Result<Self, UserError> {
+        // Implementation
+    }
+}
+```
+
+### Bad Example
+```rust
+pub struct User {
+    pub email: String,
+    pub password: String,
+}
+
+impl User {
+    pub fn new(email: &str, password: &str) -> Self {
+        Self {
+            email: email.to_string(),
+            password: password.to_string(),
+        }
+    }
+}
+``` 

@@ -1,0 +1,312 @@
+---
+description: Rust Security Best Practices
+globs: 
+alwaysApply: false
+---
+
+# Rust Security Best Practices
+
+This rule enforces best practices for writing secure Rust code.
+
+## Rules
+
+1. Use secure memory handling:
+   ```rust
+   // ❌ Bad
+   struct SensitiveData {
+       password: String,
+   }
+   
+   // ✅ Good
+   use secrecy::Secret;
+   
+   struct SensitiveData {
+       password: Secret<String>,
+   }
+   ```
+
+2. Prevent side-channel attacks:
+   ```rust
+   // ❌ Bad
+   fn compare_passwords(a: &[u8], b: &[u8]) -> bool {
+       a == b
+   }
+   
+   // ✅ Good
+   use constant_time_eq::constant_time_eq;
+   
+   fn compare_passwords(a: &[u8], b: &[u8]) -> bool {
+       constant_time_eq(a, b)
+   }
+   ```
+
+3. Use secure random number generation:
+   ```rust
+   // ❌ Bad
+   use rand::thread_rng;
+   
+   fn generate_token() -> u32 {
+       thread_rng().gen()
+   }
+   
+   // ✅ Good
+   use rand::rngs::OsRng;
+   
+   fn generate_token() -> u32 {
+       OsRng.gen()
+   }
+   ```
+
+4. Use secure string handling:
+   ```rust
+   // ❌ Bad
+   fn process_input(input: &str) {
+       let command = format!("echo {}", input);
+       std::process::Command::new("sh")
+           .arg("-c")
+           .arg(&command)
+           .output()
+           .unwrap();
+   }
+   
+   // ✅ Good
+   fn process_input(input: &str) {
+       let sanitized = input.replace(|c: char| !c.is_alphanumeric(), "");
+       // Process sanitized input
+   }
+   ```
+
+5. Use secure cryptographic operations:
+   ```rust
+   // ❌ Bad
+   fn hash_password(password: &str) -> String {
+       use std::hash::{Hash, Hasher};
+       let mut hasher = std::collections::hash_map::DefaultHasher::new();
+       password.hash(&mut hasher);
+       format!("{:x}", hasher.finish())
+   }
+   
+   // ✅ Good
+   use argon2::{
+       password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+       Argon2
+   };
+   
+   fn hash_password(password: &str) -> Result<String, Error> {
+       let salt = SaltString::generate(&mut OsRng);
+       let argon2 = Argon2::default();
+       let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
+       Ok(password_hash.to_string())
+   }
+   ```
+
+6. Use secure configuration handling:
+   ```rust
+   // ❌ Bad
+   struct Config {
+       api_key: String,
+   }
+   
+   // ✅ Good
+   use secrecy::Secret;
+   use serde::Deserialize;
+   
+   #[derive(Deserialize)]
+   struct Config {
+       api_key: Secret<String>,
+   }
+   ```
+
+## Rationale
+
+- Secure memory handling prevents data leaks
+- Side-channel attack prevention improves security
+- Secure random number generation ensures unpredictability
+- Secure string handling prevents injection attacks
+- Secure cryptographic operations provide strong security
+- Secure configuration handling protects sensitive data
+
+## Examples
+
+### Good Example
+```rust
+use secrecy::{Secret, ExposeSecret};
+use constant_time_eq::constant_time_eq;
+use rand::rngs::OsRng;
+use argon2::{
+    password_hash::{rand_core::OsRng as PasswordOsRng, PasswordHasher, SaltString, PasswordHash, PasswordVerifier},
+    Argon2
+};
+use serde::{Serialize, Deserialize};
+use std::error::Error;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct User {
+    id: u32,
+    username: String,
+    password_hash: Secret<String>,
+    api_key: Secret<String>,
+}
+
+impl User {
+    fn new(username: String, password: &str) -> Result<Self, Box<dyn Error>> {
+        let salt = SaltString::generate(&mut PasswordOsRng);
+        let argon2 = Argon2::default();
+        let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
+        
+        let api_key = Secret::new(generate_secure_token());
+        
+        Ok(Self {
+            id: generate_id(),
+            username,
+            password_hash: Secret::new(password_hash.to_string()),
+            api_key,
+        })
+    }
+    
+    fn verify_password(&self, password: &str) -> Result<bool, Box<dyn Error>> {
+        let hash = PasswordHash::new(self.password_hash.expose_secret())?;
+        Ok(Argon2::default().verify_password(password.as_bytes(), &hash).is_ok())
+    }
+    
+    fn verify_api_key(&self, key: &str) -> bool {
+        constant_time_eq(key.as_bytes(), self.api_key.expose_secret().as_bytes())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Config {
+    database_url: Secret<String>,
+    jwt_secret: Secret<String>,
+    api_keys: Vec<Secret<String>>,
+}
+
+impl Config {
+    fn load() -> Result<Self, Box<dyn Error>> {
+        let config = std::fs::read_to_string("config.toml")?;
+        let mut config: Config = toml::from_str(&config)?;
+        
+        // Override sensitive values from environment
+        if let Ok(url) = std::env::var("DATABASE_URL") {
+            config.database_url = Secret::new(url);
+        }
+        if let Ok(secret) = std::env::var("JWT_SECRET") {
+            config.jwt_secret = Secret::new(secret);
+        }
+        
+        Ok(config)
+    }
+}
+
+fn generate_secure_token() -> String {
+    let mut token = [0u8; 32];
+    OsRng.fill_bytes(&mut token);
+    base64::encode(&token)
+}
+
+fn generate_id() -> u32 {
+    OsRng.gen()
+}
+
+fn process_sensitive_data(data: &str) -> String {
+    // Sanitize input
+    let sanitized = data.chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>();
+    
+    // Process sanitized data
+    sanitized.to_uppercase()
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // Load secure configuration
+    let config = Config::load()?;
+    
+    // Create user with secure password hashing
+    let user = User::new("john_doe", "secure_password123")?;
+    
+    // Verify password securely
+    if user.verify_password("secure_password123")? {
+        println!("Password verified");
+    }
+    
+    // Process sensitive data
+    let result = process_sensitive_data("user input");
+    println!("Processed: {}", result);
+    
+    Ok(())
+}
+```
+
+### Bad Example
+```rust
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+struct User {
+    id: u32,
+    username: String,
+    password: String,
+    api_key: String,
+}
+
+impl User {
+    fn new(username: String, password: &str) -> Self {
+        Self {
+            id: rand::random(),
+            username,
+            password: password.to_string(),
+            api_key: generate_token(),
+        }
+    }
+    
+    fn verify_password(&self, password: &str) -> bool {
+        self.password == password
+    }
+    
+    fn verify_api_key(&self, key: &str) -> bool {
+        self.api_key == key
+    }
+}
+
+struct Config {
+    database_url: String,
+    jwt_secret: String,
+    api_keys: Vec<String>,
+}
+
+impl Config {
+    fn load() -> Self {
+        let config = std::fs::read_to_string("config.toml").unwrap();
+        toml::from_str(&config).unwrap()
+    }
+}
+
+fn generate_token() -> String {
+    use rand::thread_rng;
+    let mut rng = thread_rng();
+    format!("{:x}", rng.gen::<u64>())
+}
+
+fn process_sensitive_data(data: &str) -> String {
+    // No input sanitization
+    data.to_uppercase()
+}
+
+fn main() {
+    // Load configuration with sensitive data in plain text
+    let config = Config::load();
+    
+    // Create user with plain text password
+    let user = User::new("john_doe", "secure_password123");
+    
+    // Verify password with string comparison
+    if user.verify_password("secure_password123") {
+        println!("Password verified");
+    }
+    
+    // Process sensitive data without sanitization
+    let result = process_sensitive_data("user input");
+    println!("Processed: {}", result);
+}
+```
