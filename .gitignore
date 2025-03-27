@@ -21,3 +21,4 @@ Cargo.lock
 #added by me
 .DS_Store
 .aider*
+cursor_diff.patch
