@@ -7,11 +7,13 @@ Ozymandias uses the `clap` crate for command-line argument parsing, providing a 
 ## Command Structure
 
 ### Base Command
+
 ```
 ozy [OPTIONS] <COMMAND>
 ```
 
 ### Global Options
+
 - `-v, --verbose`: Increase verbosity (can be used multiple times)
 - `-q, --quiet`: Decrease verbosity (can be used multiple times)
 - `--log-level <LEVEL>`: Set the logging level
@@ -20,15 +22,19 @@ ozy [OPTIONS] <COMMAND>
 ### Commands
 
 #### init
+
 ```
 ozy init [OPTIONS]
 ```
+
 Initializes a new knowledge base.
 
 ## Command Implementation
 
 ### Command Traits
+
 Each command implements the following trait:
+
 ```rust
 pub trait Command {
     fn execute(&self) -> Result<(), anyhow::Error>;
@@ -36,6 +42,7 @@ pub trait Command {
 ```
 
 ### Error Handling
+
 - Uses `anyhow` for error handling
 - Provides clear, user-friendly error messages
 - Includes detailed error information in logs
@@ -51,4 +58,5 @@ ozy -v init
 
 # Set specific log level
 ozy --log-level debug init
-``` 
+```
+
